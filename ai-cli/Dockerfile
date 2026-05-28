@@ -1,4 +1,4 @@
-FROM rockylinux:10
+FROM rockylinux/rockylinux:10
 
 ARG NODE_VERSION=24.16.0
 ENV NODE_VERSION=${NODE_VERSION}
