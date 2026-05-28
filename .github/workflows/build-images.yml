@@ -69,7 +69,8 @@ jobs:
         run: |
           IMAGE_NAME="${{ matrix.image }}"
           DATE_TAG="v$(date +%Y.%m.%d)"
-          REGISTRY_PATH="${{ env.REGISTRY }}/${{ github.repository_owner }}/${IMAGE_NAME,,}"
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          REGISTRY_PATH="${{ env.REGISTRY }}/${OWNER_LOWER}/${IMAGE_NAME,,}"
           echo "image-name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
           echo "date-tag=${DATE_TAG}" >> $GITHUB_OUTPUT
           echo "registry-path=${REGISTRY_PATH}" >> $GITHUB_OUTPUT
@@ -100,8 +101,9 @@ jobs:
         run: |
           LATEST_IMAGE="${{ needs.detect-images.outputs.latest-image }}"
           DATE_TAG="v$(date +%Y.%m.%d)"
-          SOURCE_IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${LATEST_IMAGE,,}:${DATE_TAG}"
-          TARGET_IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${LATEST_IMAGE,,}:latest"
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          SOURCE_IMAGE="${{ env.REGISTRY }}/${OWNER_LOWER}/${LATEST_IMAGE,,}:${DATE_TAG}"
+          TARGET_IMAGE="${{ env.REGISTRY }}/${OWNER_LOWER}/${LATEST_IMAGE,,}:latest"
 
           docker pull $SOURCE_IMAGE
           docker tag $SOURCE_IMAGE $TARGET_IMAGE
