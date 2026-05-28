@@ -1,0 +1,110 @@
+name: Build Docker Images
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'
+      - '**/Dockerfile'
+      - '.github/workflows/build-images.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  detect-images:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      latest-image: ${{ steps.set-matrix.outputs.latest-image }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Detect Dockerfiles
+        id: set-matrix
+        run: |
+          # Find all directories containing Dockerfile
+          images=$(find . -name "Dockerfile" -type f -not -path "./.git/*" | sed 's|/Dockerfile||' | sed 's|^\./||' | sort)
+          
+          # Convert to JSON array
+          json_array=$(echo "$images" | jq -R . | jq -s .)
+          echo "matrix=$json_array" >> $GITHUB_OUTPUT
+          
+          # Get the last image (latest)
+          latest=$(echo "$images" | tail -n 1)
+          echo "latest-image=$latest" >> $GITHUB_OUTPUT
+          
+          echo "Detected images: $images"
+          echo "Latest image: $latest"
+
+  build-images:
+    needs: detect-images
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: ${{ fromJson(needs.detect-images.outputs.matrix) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        run: |
+          IMAGE_NAME="${{ matrix.image }}"
+          DATE_TAG="v$(date +%Y.%m.%d)"
+          REGISTRY_PATH="${{ env.REGISTRY }}/${{ github.repository_owner }}/${IMAGE_NAME,,}"
+          echo "image-name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "date-tag=${DATE_TAG}" >> $GITHUB_OUTPUT
+          echo "registry-path=${REGISTRY_PATH}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.image }}
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.registry-path }}:${{ steps.meta.outputs.date-tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  tag-latest:
+    needs: [detect-images, build-images]
+    runs-on: ubuntu-latest
+    if: needs.detect-images.outputs.latest-image != ''
+    steps:
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag latest image
+        run: |
+          LATEST_IMAGE="${{ needs.detect-images.outputs.latest-image }}"
+          DATE_TAG="v$(date +%Y.%m.%d)"
+          SOURCE_IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${LATEST_IMAGE,,}:${DATE_TAG}"
+          TARGET_IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${LATEST_IMAGE,,}:latest"
+          
+          docker pull $SOURCE_IMAGE
+          docker tag $SOURCE_IMAGE $TARGET_IMAGE
+          docker push $TARGET_IMAGE
+          
+          echo "Tagged $SOURCE_IMAGE as $TARGET_IMAGE"
