@@ -32,15 +32,15 @@ jobs:
         run: |
           # Find all directories containing Dockerfile
           images=$(find . -name "Dockerfile" -type f -not -path "./.git/*" | sed 's|/Dockerfile||' | sed 's|^\./||' | sort)
-          
+
           # Convert to JSON array
-          json_array=$(echo "$images" | jq -R . | jq -s .)
-          echo "matrix=$json_array" >> $GITHUB_OUTPUT
-          
+          json_array=$(echo "$images" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "matrix=${json_array}" >> $GITHUB_OUTPUT
+
           # Get the last image (latest)
           latest=$(echo "$images" | tail -n 1)
           echo "latest-image=$latest" >> $GITHUB_OUTPUT
-          
+
           echo "Detected images: $images"
           echo "Latest image: $latest"
 
@@ -102,9 +102,9 @@ jobs:
           DATE_TAG="v$(date +%Y.%m.%d)"
           SOURCE_IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${LATEST_IMAGE,,}:${DATE_TAG}"
           TARGET_IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${LATEST_IMAGE,,}:latest"
-          
+
           docker pull $SOURCE_IMAGE
           docker tag $SOURCE_IMAGE $TARGET_IMAGE
           docker push $TARGET_IMAGE
-          
+
           echo "Tagged $SOURCE_IMAGE as $TARGET_IMAGE"
